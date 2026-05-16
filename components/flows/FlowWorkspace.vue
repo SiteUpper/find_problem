@@ -30,6 +30,26 @@
           @connect="onConnect"
           class="custom-flow-grid"
         >
+          <!-- Слоты кастомных узлов с кнопкой удаления [×] в правом верхнем углу -->
+          <template #node-custom-trigger="nodeProps">
+            <div class="position-relative">
+              <button class="btn-delete-node nodrag" @click.stop="deleteNode(nodeProps.id)" title="Удалить элемент">×</button>
+              <CustomNode v-bind="nodeProps" />
+            </div>
+          </template>
+          <template #node-custom-condition="nodeProps">
+            <div class="position-relative">
+              <button class="btn-delete-node nodrag" @click.stop="deleteNode(nodeProps.id)" title="Удалить элемент">×</button>
+              <CustomNode v-bind="nodeProps" />
+            </div>
+          </template>
+          <template #node-custom-action="nodeProps">
+            <div class="position-relative">
+              <button class="btn-delete-node nodrag" @click.stop="deleteNode(nodeProps.id)" title="Удалить элемент">×</button>
+              <CustomNode v-bind="nodeProps" />
+            </div>
+          </template>
+
           <Background pattern-color="#aaa" :gap="16" />
           <Controls position="bottom-left" />
         </VueFlow>
@@ -108,7 +128,7 @@ const props = defineProps({
 
 const emit = defineEmits(['back', 'saved']);
 
-const { project } = useVueFlow({ id: 'flow-canvas' });
+const { project, screenToFlowPosition } = useVueFlow({ id: 'flow-canvas' });
 
 // Регистрируем кастомный узел
 const nodeTypes = {
@@ -130,7 +150,9 @@ const onDrop = (event) => {
   const type = event.dataTransfer.getData('application/vueflow');
   if (!type) return;
 
-  const position = project({ x: event.clientX, y: event.clientY });
+  // screenToFlowPosition корректно учитывает зум и сдвиг холста,
+  // в отличие от project(), который может сбиваться при повторных переносах
+  const position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
 
   const newNode = {
     id: `node_${Date.now()}`,
@@ -151,6 +173,12 @@ const onDrop = (event) => {
   // Иммутабельное обновление: новая ссылка на массив вместо .push(),
   // чтобы Vue Flow не замораживал Drag-and-Drop через глубокий Proxy
   nodes.value = [...nodes.value, newNode];
+};
+
+// Удаление узла с доски и всех связанных с ним рёбер
+const deleteNode = (nodeId) => {
+  nodes.value = nodes.value.filter(n => n.id !== nodeId);
+  edges.value = edges.value.filter(e => e.source !== nodeId && e.target !== nodeId);
 };
 
 // Обработчик создания связи (стрелочки) между узлами
@@ -255,6 +283,32 @@ const saveFlowData = () => {
 :deep(.vue-flow__controls-button:hover) {
   background-color: #f3f6f9 !important;
   color: #405189 !important;
+}
+
+/* Кнопка удаления узла — красный кружок [×] в правом верхнем углу */
+.btn-delete-node {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  width: 22px;
+  height: 22px;
+  background-color: #ef4444;
+  color: white;
+  border: 2px solid white;
+  border-radius: 50%;
+  font-size: 14px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 100;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  transition: all 0.15s ease;
+}
+.btn-delete-node:hover {
+  background-color: #dc2626;
+  transform: scale(1.1);
 }
 
 :deep(.vue-flow__controls-button svg) {

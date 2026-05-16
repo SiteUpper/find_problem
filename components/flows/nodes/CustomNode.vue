@@ -11,7 +11,7 @@
       </div>
 
       <label class="fs-11 text-muted mb-1 d-block">Если статус задачи стал:</label>
-      <select v-model="data.status_id" class="form-select form-select-sm fs-12">
+      <select v-model="data.status_id" class="form-select form-select-sm fs-12 nodrag nopan">
         <option v-for="s in data.statuses" :key="s.id" :value="s.id">{{ s.name }}</option>
       </select>
       <Handle type="source" position="right" />
@@ -27,16 +27,16 @@
       </div>
 
       <div class="d-flex flex-column gap-1">
-        <select v-model="data.field" class="form-select form-select-sm fs-11">
+        <select v-model="data.field" class="form-select form-select-sm fs-11 nodrag nopan">
           <option value="priority">Приоритет</option>
           <option value="budget">Бюджет (число)</option>
         </select>
-        <select v-model="data.operator" class="form-select form-select-sm fs-11">
+        <select v-model="data.operator" class="form-select form-select-sm fs-11 nodrag nopan">
           <option value="=">Равно</option>
           <option value=">">Больше чем</option>
         </select>
-        <input v-if="data.field === 'budget'" type="number" v-model="data.value" class="form-control form-control-sm fs-11" placeholder="Сумма">
-        <select v-else v-model="data.value" class="form-select form-select-sm fs-11">
+        <input v-if="data.field === 'budget'" type="number" v-model="data.value" class="form-control form-control-sm fs-11 nodrag nopan" placeholder="Сумма">
+        <select v-else v-model="data.value" class="form-select form-select-sm fs-11 nodrag nopan">
           <option value="high">High</option>
           <option value="medium">Medium</option>
         </select>
@@ -59,14 +59,14 @@
         <span class="fs-11 fw-semibold text-uppercase text-success tracking-wider">3. Действие робота</span>
       </div>
 
-      <select v-model="data.type" class="form-select form-select-sm fs-12 mb-1.5">
+      <select v-model="data.type" class="form-select form-select-sm fs-12 mb-1.5 nodrag nopan">
         <option value="create_subtask">Создать подзадачу</option>
         <option value="change_owner">Сменить ответственного</option>
       </select>
 
       <div v-if="data.type === 'create_subtask'">
-        <input type="text" v-model="data.task_name" class="form-control form-control-sm fs-11 mb-1" placeholder="Название подзадачи">
-        <select v-model="data.user_id" class="form-select form-select-sm fs-11">
+        <input type="text" v-model="data.task_name" class="form-control form-control-sm fs-11 mb-1 nodrag nopan" placeholder="Название подзадачи">
+        <select v-model="data.user_id" class="form-select form-select-sm fs-11 nodrag nopan">
           <option v-for="m in data.members" :key="m.id" :value="m.id">{{ m.name }}</option>
         </select>
       </div>
