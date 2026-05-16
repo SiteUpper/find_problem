@@ -18,6 +18,7 @@ import TaskComments from "@/Components/new/TaskComments.vue";
 import axios from 'axios';
 import KanbanBoard from './KanbanBoard.vue';
 import BacklogTab from './BacklogTab.vue';
+import FlowsTab from './components/flows/FlowsTab.vue';
 
 const form = useForm({
     email: '',
@@ -35,6 +36,8 @@ const props = defineProps({
     canAddTasks: Boolean,
     canChangeStatus: Boolean,
     priority_options: Array,
+    projectStatuses: { type: Array, default: () => [] },
+    projectMembers: { type: Array, default: () => [] },
 });
 console.log(props.project_roles)
 // BTabs v-model работает с числовым индексом (0-based)
@@ -46,6 +49,7 @@ const activeTab = ref(0);
 const isLoading = ref(false);
 const kanbanLoaded = ref(false);
 const backlogLoaded = ref(false);
+const flowsLoaded = ref(false);
 const kanbanBoardId = ref(null);
 
 const parseUrlParams = () => {
@@ -682,6 +686,23 @@ const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
 };
 
+// Умный прогресс-бар: процент от start_at до deadline_at
+const getTaskProgress = (task) => {
+    if (!task.start_at || !task.deadline_at) return null;
+
+    const start = new Date(task.start_at).getTime();
+    const end = new Date(task.deadline_at).getTime();
+    const now = new Date().getTime();
+
+    if (now < start) return 0; // Задача еще не началась
+    if (now > end) return 100; // Срок полностью истек
+
+    const total = end - start;
+    const elapsed = now - start;
+
+    return Math.round((elapsed / total) * 100);
+};
+
 // Drag-to-Scroll: стейты
 const scrollContainer = ref(null);
 let isDown = false;
@@ -793,101 +814,62 @@ const handleTableScroll = (e) => {
             </div>
         </div>
         <div style="width: 100%; height: 30px;"></div>
+        <!-- Новая панель информации о проекте -->
         <BRow>
             <BCol lg="12">
-                <BCard no-body class="mt-n4">
-                    <div class="bg-primary-subtle">
-                        <BCardBody class="pb-0 px-4">
-                            <BRow class="mb-3">
-                                <BCol md="12" class="d-flex flex-column flex-sm-row align-items-center justify-content-between gap-4">
-                                    <BRow class="align-items-center g-3">
-                                        <BCol md="auto">
-                                            <div class="avatar-md">
-                                                 <div v-if="project.cover_path" class="avatar-title bg-white rounded-circle" :class="`bg-${getTeamColor(project.name)}-subtle text-${getTeamColor(project.name)}`">
-                                                    <img :src="project.cover_thumb_url" alt="">
-                                                </div>
-                                                <div v-else class="avatar-title bg-white rounded-circle" :class="`bg-${getTeamColor(project.name)}-subtle text-${getTeamColor(project.name)}`">
-                                                    {{ project.name.charAt(0).toUpperCase() }}
-                                                </div>
-                                            </div>
-                                        </BCol>
-                                        <BCol  md="auto" class="border-end pe-4">
-                                            <div>
-                                                <h4 class="fw-bold">{{ project.name }}</h4>
-                                                <div class="hstack gap-3 flex-wrap">
-                                                    <div>Создан : <span class="fw-medium">{{ project.created_at }}</span></div>
-                                                    Автор: {{ project.owner.name }}
-                                                    <!-- <div class="vr"></div>
-                                                    <div>Due Date : <span class="fw-medium">29 Dec, 2021</span></div>
-                                                    <div class="vr"></div>
-                                                    <BBadge pill class="bg-info fs-12">New</BBadge>
-                                                    <BBadge variant="danger" pill class="bg-danger fs-12">High</BBadge> -->
-                                                </div>
-                                            </div>
-                                        </BCol>
-                                        <BCol md class="ms-3">
-                                            <div class="text-muted italic">
-                                                <h6 class="fs-12 text-uppercase fw-semibold mb-1 text-muted">Описание проекта:</h6>
-                                                <BCard><p class="mb-0">{{ project.description || 'Описание отсутствует' }}</p></BCard>
+                <div class="card border-0 shadow-sm mb-4 bg-white rounded-3 overflow-hidden">
+                    <div class="card-body p-4">
+                        <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-4">
 
-                                            </div>
-                                        </BCol>
-                                    </BRow>
-                                    <!-- <BRow class="align-items-center g-12">
-                                            <BCard no-body>
-                                             {{ project.description }}
-                                             </Bcard>
-                                    </BRow> -->
-                                    <!-- <BRow class="align-items-center g-12">
-                                        <BCol>
-                                            <BCard no-body class="card-animate overflow-hidden">
+                            <!-- Левая часть: Крупная иконка, название проекта и описание -->
+                            <div class="d-flex align-items-start gap-3 flex-grow-1 min-w-0">
+                                <div class="project-icon-box bg-soft-primary text-primary rounded-3 d-flex align-items-center justify-content-center flex-shrink-0 shadow-sm overflow-hidden">
+                                    <img v-if="project.cover_thumb_url && project.cover_thumb_url !== '/assets/images/default-project.png'" :src="project.cover_thumb_url" class="w-100 h-100 object-fit-cover" alt="" />
+                                    <span v-else class="fs-28 fw-bold text-uppercase">{{ project.name?.charAt(0) || 'P' }}</span>
+                                </div>
+                                <div class="min-w-0">
+                                    <h4 class="fw-semibold text-dark mb-1.5 d-flex align-items-center flex-wrap gap-2">
+                                        <span class="text-truncate">{{ project.name }}</span>
+                                        <span class="badge bg-soft-success text-success fs-11 py-1 px-2.5 rounded-pill fw-medium">Активный</span>
+                                    </h4>
+                                    <!-- Текст описания проекта с ограничением максимальной ширины -->
+                                    <p class="text-muted fs-13 mb-0 max-w-project-desc">
+                                        {{ project.description || 'Описание проекта отсутствует. Нажмите «Редактировать», чтобы добавить краткую информацию о целях и задачах.' }}
+                                    </p>
+                                </div>
+                            </div>
 
-                                                <div class="position-absolute start-0 widget-pattern" style="z-index: 0;">
-                                                    <svg version="1.2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 120" width="200"
-                                                        height="120">
-                                                        <path id="Shape 8" class="s0"
-                                                            d="m189.5-25.8c0 0 20.1 46.2-26.7 71.4 0 0-60 15.4-62.3 65.3-2.2 49.8-50.6 59.3-57.8 61.5-7.2 2.3-60.8 0-60.8 0l-11.9-199.4z" />
-                                                    </svg>
-                                                </div>
-                                                <BCardBody style="z-index:1 ;">
-                                                    <div class="d-flex align-items-center">
-                                                        <div class="flex-grow-1 overflow-hidden">
-                                                            <p class="text-uppercase fw-medium text-muted text-truncate mb-3">Выполнено <br> задач</p>
-                                                            <h4 class="fs-22 fw-semibold ff-secondary mb-0">
-                                                                <count-to :startVal="0" :endVal="5" :duration="1"></count-to> из 11
-                                                            </h4>
-                                                        </div>
-                                                        <div class="flex-shrink-0">
-                                                            <apexchart class="apex-charts" dir="ltr" width="105px" height="90px" :series='[50]'
-                                                                :options="{ ...chartOptions }"></apexchart>
-                                                        </div>
-                                                    </div>
-                                                </BCardBody>
-                                            </BCard>
-                                        </BCol>
-                                    </BRow> -->
-                                </BCol>
-                                <!-- <BCol md="auto">
-                                    <div class="hstack gap-1 flex-wrap">
-                                        <button type="button" class="btn py-0 fs-16 favourite-btn active">
-                                            <i class="ri-star-fill" @click="toggleFavourite"></i>
-                                        </button>
-                                        <button type="button" class="btn py-0 fs-16 text-body">
-                                            <i class="ri-share-line"></i>
-                                        </button>
-                                        <button type="button" class="btn py-0 fs-16 text-body">
-                                            <i class="ri-flag-line"></i>
-                                        </button>
+                            <!-- Правая часть: Метаданные (Автор и Создан), разделенные линией -->
+                            <div class="d-flex align-items-center gap-4 border-start ps-md-4 project-meta-block flex-shrink-0">
+                                <!-- Блок Владельца/Автора -->
+                                <div class="meta-item-box text-center text-md-start">
+                                    <span class="fs-11 text-muted text-uppercase fw-semibold d-block mb-1.5 tracking-wider">Владелец</span>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <img v-if="project.owner?.profile_photo_micro_url" :src="project.owner.profile_photo_micro_url" class="avatar-xxs rounded-circle border border-white shadow-sm" alt="" />
+                                        <div v-else class="avatar-xxs bg-light rounded-circle text-primary fw-bold fs-10 d-flex align-items-center justify-content-center border border-white shadow-sm">
+                                            {{ project.owner?.name ? project.owner.name.charAt(0) : 'U' }}
+                                        </div>
+                                        <span class="fs-13 fw-semibold text-dark text-nowrap">{{ project.owner?.name || 'Не указан' }}</span>
                                     </div>
-                                </BCol> -->
-                            </BRow>
-                        </BCardBody>
+                                </div>
+
+                                <!-- Блок Даты создания -->
+                                <div class="meta-item-box text-center text-md-start border-start-dash ps-3">
+                                    <span class="fs-11 text-muted text-uppercase fw-semibold d-block mb-1.5 tracking-wider">Создан</span>
+                                    <span class="fs-13 fw-semibold text-dark text-nowrap">
+                                        <i class="ri-calendar-line text-muted me-1 align-middle fs-14"></i>
+                                        {{ formatDate(project.created_at) }}
+                                    </span>
+                                </div>
+                            </div>
+
+                        </div>
                     </div>
-                </BCard>
+                </div>
             </BCol>
         </BRow>
 
-        <BRow>
+        <BRow class="mb-4">
             <BCol lg="12">
                 <BTabs v-model="activeTab" nav-class="nav-tabs-custom border-bottom-0">
                     <BTab title="Задачи" active class="fw-semibold pt-2">
@@ -909,7 +891,13 @@ const handleTableScroll = (e) => {
                                 </div>
 
                                 <div class="card-body p-0">
-                                    <p class="text-muted px-3 pt-2 pb-0 mb-0">При <code>снятии с публикации</code> задача станет недоступна всем его участникам.</p>
+                                    <!-- Компактное и стильное предупреждение о публикации -->
+                                    <div class="alert alert-soft-warning border-0 d-flex align-items-center p-2.5 mb-3 fs-12 rounded-3 shadow-sm mx-3 mt-3">
+                                        <div class="d-flex align-items-center gap-2 text-dark">
+                                            <i class="ri-alert-fill fs-16 text-warning"></i>
+                                            <span><strong>Статус публикации:</strong> Снятие задачи с публикации скроет её из рабочих пространств всех участников.</span>
+                                        </div>
+                                    </div>
 
                                     <!-- Таблица с drag-to-scroll и кастомным скроллбаром -->
                                     <div
@@ -943,9 +931,23 @@ const handleTableScroll = (e) => {
                                                 >
                                                     <!-- Прогресс (липкая колонка) -->
                                                     <td class="p-3 sticky-col">
-                                                        <div class="d-flex align-items-center gap-2" style="min-width: 70px;">
-                                                            <BProgress variant="success" class="animated-progess progress-sm flex-grow-1" :value="task.progress" />
-                                                            <small class="text-muted fs-10">{{ task.progress }}%</small>
+                                                        <!-- Вариант А: Задача еще не стартовала или нет дат -->
+                                                        <div v-if="getTaskProgress(task) === null || getTaskProgress(task) === 0" class="text-muted fs-12 d-flex align-items-center gap-1">
+                                                            <i class="ri-time-line text-warning fs-15"></i> В очереди
+                                                        </div>
+                                                        <!-- Вариант Б: Задача в процессе выполнения -->
+                                                        <div v-else class="d-flex align-items-center gap-2" style="min-width: 120px;">
+                                                            <div class="progress flex-grow-1 bg-soft-primary" style="height: 6px;">
+                                                                <div
+                                                                    class="progress-bar bg-primary rounded"
+                                                                    role="progressbar"
+                                                                    :style="{ width: getTaskProgress(task) + '%' }"
+                                                                    :aria-valuenow="getTaskProgress(task)"
+                                                                    aria-valuemin="0"
+                                                                    aria-valuemax="100"
+                                                                ></div>
+                                                            </div>
+                                                            <span class="fs-11 fw-medium text-muted">{{ getTaskProgress(task) }}%</span>
                                                         </div>
                                                     </td>
 
@@ -964,7 +966,7 @@ const handleTableScroll = (e) => {
                                                     <!-- Участники: перекрывающиеся аватарки -->
                                                     <td>
                                                         <div class="avatar-group flex-nowrap">
-                                                            <template v-for="member in task.all_participants.slice(0, 3)" :key="member.name">
+                                                            <template v-for="member in task.all_participants.slice(0, 4)" :key="member.name">
                                                                 <BLink
                                                                     class="avatar-group-item position-relative"
                                                                     v-b-tooltip.hover
@@ -982,18 +984,24 @@ const handleTableScroll = (e) => {
                                                                     </div>
                                                                 </BLink>
                                                             </template>
-                                                            <div v-if="task.all_participants.length > 3" class="avatar-group-item">
-                                                                <div class="avatar-xxs rounded-circle bg-light text-muted d-flex align-items-center justify-content-center fs-10 fw-medium">
-                                                                    +{{ task.all_participants.length - 3 }}
+                                                            <div v-if="task.all_participants.length > 4" class="avatar-group-item">
+                                                                <div
+                                                                    class="avatar-xxs rounded-circle bg-light text-muted d-flex align-items-center justify-content-center fs-10 fw-medium border border-white"
+                                                                    v-b-tooltip.hover
+                                                                    :title="'и еще ' + (task.all_participants.length - 4) + ' участников'"
+                                                                >
+                                                                    +{{ task.all_participants.length - 4 }}
                                                                 </div>
                                                             </div>
                                                             <span v-if="!task.all_participants?.length" class="text-muted fs-12">—</span>
-                                                            <BLink @click.stop="currentTask = task, showModal = true" v-if="canManageMembers"
-                                                                v-b-tooltip.hover title="Добавить пользователя">
+                                                            <button @click.stop="currentTask = task, showModal = true" v-if="canManageMembers"
+                                                                v-b-tooltip.hover title="Добавить пользователя"
+                                                                class="btn p-0 border-0 bg-transparent"
+                                                            >
                                                                 <div class="avatar-xxs rounded-circle bg-light border-dashed border text-primary d-flex align-items-center justify-content-center fs-10 fw-bold">
                                                                     +
                                                                 </div>
-                                                            </BLink>
+                                                            </button>
                                                         </div>
                                                         <div v-if="task.has_active_invitations" class="mt-1">
                                                             <small class="text-muted">и {{ task.invitations_count }} приглашено</small>
@@ -1005,24 +1013,16 @@ const handleTableScroll = (e) => {
                                                         <span class="fs-13 text-body">{{ formatDate(task.created_at) }}</span>
                                                     </td>
 
-                                                    <!-- Статус (dot-маркер + BDropdown) -->
+                                                    <!-- Статус (badge-outline + BDropdown) -->
                                                     <td>
                                                         <BDropdown :disabled="!canChangeStatus" variant="link" class="p-0 border-0 no-caret" toggle-class="text-decoration-none p-0">
                                                             <template #button-content>
                                                                 <span
-                                                                    class="d-inline-flex align-items-center gap-1.5 px-2 py-1 rounded-pill fs-12 fw-medium border bg-white position-relative"
-                                                                    :style="{ borderColor: task.status?.color || '#6c757d' }"
+                                                                    class="badge-outline-custom status-badge"
+                                                                    :style="{ borderColor: task.status?.color, color: task.status?.color }"
                                                                 >
-                                                                    <span class="status-dot" :style="{ backgroundColor: task.status?.color || '#6c757d' }"></span>
-                                                                    <span class="text-dark fs-11">{{ task.status?.name || 'Без статуса' }}</span>
-                                                                    <transition name="fade">
-                                                                        <div v-if="task.isUpdatingStatus"
-                                                                            class="position-absolute start-50 top-50 translate-middle w-100 h-100 rounded bg-light d-flex align-items-center justify-content-center"
-                                                                            style="z-index: 1;"
-                                                                        >
-                                                                            <i class="ri-check-line text-success fs-14 fw-bold"></i>
-                                                                        </div>
-                                                                    </transition>
+                                                                    <span class="status-circle-dot" :style="{ backgroundColor: task.status?.color }"></span>
+                                                                    {{ task.status?.name || 'Без статуса' }}
                                                                 </span>
                                                             </template>
                                                             <BDropdownItem
@@ -1038,20 +1038,18 @@ const handleTableScroll = (e) => {
                                                                 </div>
                                                             </BDropdownItem>
                                                         </BDropdown>
-                                                        <!-- Индикатор публикации -->
-                                                        <span :class="task.published ? 'status-green' : 'status-red'" class="ms-1 d-inline-block" style="width: 6px; height: 6px; border-radius: 50%;"></span>
                                                     </td>
 
-                                                    <!-- Приоритет (outline-стиль + BDropdown) -->
+                                                    <!-- Приоритет (badge-outline + BDropdown) -->
                                                     <td>
                                                         <BDropdown variant="link" class="p-0 border-0 no-caret" toggle-class="text-decoration-none p-0">
                                                             <template #button-content>
                                                                 <span
-                                                                    class="badge border fs-10 text-uppercase px-2 py-1"
-                                                                    :style="{
-                                                                        color: getHexColor(getPriorityColor(task.priority)),
-                                                                        borderColor: getHexColor(getPriorityColor(task.priority)),
-                                                                        backgroundColor: getHexColor(getPriorityColor(task.priority)) + '15'
+                                                                    class="badge-outline-custom text-uppercase fs-10 px-2 py-1"
+                                                                    :class="{
+                                                                        'priority-high': task.priority === 'high',
+                                                                        'priority-medium': task.priority === 'medium',
+                                                                        'priority-low': task.priority === 'low'
                                                                     }"
                                                                 >
                                                                     {{ getPriorityLabel(task.priority) }}
@@ -1074,23 +1072,36 @@ const handleTableScroll = (e) => {
                                                         </BDropdown>
                                                     </td>
 
-                                                    <!-- Действия (появляются при hover) -->
-                                                    <td class="p-3 text-end">
-                                                        <div class="row-actions-wrapper">
-                                                            <div class="d-flex align-items-center justify-content-end gap-2">
-                                                                <BButton @click="openChat(task)" variant="ghost-secondary" size="sm" v-b-tooltip.hover title="Обсуждение">
-                                                                    <i class="ri-chat-3-line"></i>
-                                                                </BButton>
-                                                                <TaskHourModal :task="task" />
-                                                                <div class="form-check form-switch form-switch-right form-switch-md mb-0">
-                                                                    <input @change.stop="router.patch(route('tasks.publish.toggle', task.hash))" :checked="task.published" :value="task.published" class="form-check-input code-switcher" type="checkbox" :id="'project-switch-' + task.id">
-                                                                </div>
-                                                                <BButton @click.stop="deleteTask(task)" v-b-tooltip.hover size="sm" title="Удалить" variant="ghost-danger">
-                                                                    <i class="ri-delete-bin-line"></i>
-                                                                </BButton>
-                                                                <BButton @click="openTask(task.hash)" size="sm" variant="ghost-success" v-b-tooltip.hover title="Открыть">
-                                                                    <i class="ri-arrow-right-line"></i>
-                                                                </BButton>
+                                                    <!-- Действия -->
+                                                    <td class="p-3 text-end" style="width: 140px;">
+                                                        <div class="d-flex align-items-center justify-content-end gap-2 actions-container">
+                                                            <!-- Кнопка Публикации: иконка-глаз вместо тумблера -->
+                                                            <button
+                                                                class="btn btn-icon btn-sm rounded-circle waves-effect waves-light transition-all"
+                                                                :class="task.published ? 'btn-soft-success' : 'btn-soft-danger'"
+                                                                @click="router.patch(route('tasks.publish.toggle', task.hash), {}, { preserveScroll: true })"
+                                                                v-b-tooltip.hover
+                                                                :title="task.published ? 'Опубликовано (нажмите, чтобы скрыть)' : 'Черновик (нажмите, чтобы опубликовать)'"
+                                                            >
+                                                                <i :class="task.published ? 'ri-eye-fill fs-14' : 'ri-eye-off-fill fs-14'"></i>
+                                                            </button>
+
+                                                            <!-- Сгруппированный блок быстрых действий -->
+                                                            <div class="btn-group btn-group-sm border border-light-subtle rounded-2 bg-white shadow-sm overflow-hidden">
+                                                                <button
+                                                                    class="btn btn-link text-muted px-2.5 py-1.5 border-end border-light-subtle no-decor-btn"
+                                                                    @click="openChat(task)"
+                                                                    title="Обсуждение"
+                                                                >
+                                                                    <i class="ri-chat-3-line fs-13"></i>
+                                                                </button>
+                                                                <button
+                                                                    class="btn btn-link text-muted px-2.5 py-1.5 no-decor-btn"
+                                                                    @click="deleteTask(task)"
+                                                                    title="Удалить"
+                                                                >
+                                                                    <i class="ri-delete-bin-line fs-13"></i>
+                                                                </button>
                                                             </div>
                                                         </div>
                                                     </td>
@@ -1104,6 +1115,63 @@ const handleTableScroll = (e) => {
                                     </div>
                                 </div>
                             </div>
+                        </BRow>
+
+                        <BRow v-if="totalPages > 1" class="g-0 text-center text-sm-start align-items-center mt-3">
+                            <BCol sm="6">
+                                <div>
+                                    <p class="mb-sm-0">Показано с {{ tasks.from }} по {{ tasks.to }} из {{ tasks.total }} задач</p>
+                                </div>
+                            </BCol>
+                            <BCol sm="6">
+                                <ul class="pagination pagination-separated justify-content-center justify-content-sm-end mb-sm-0">
+                                    <li
+                                        class="page-item"
+                                        :class="{ 'disabled': tasks.current_page === 1 }"
+                                    >
+                                        <BLink
+                                            class="page-link cursor-pointer"
+                                            @click.prevent="goToPage(tasks.current_page - 1)"
+                                        >
+                                            <span v-if="loadingPage === tasks.current_page - 1" class="spinner-border spinner-border-sm" role="status"></span>
+                                            <span v-else><i class="mdi mdi-chevron-left"></i></span>
+                                        </BLink>
+                                    </li>
+                                    <template v-for="(entry, idx) in visiblePages" :key="'p-' + idx">
+                                        <li
+                                            v-if="entry === '...'"
+                                            class="page-item disabled"
+                                        >
+                                            <span class="page-link">…</span>
+                                        </li>
+                                        <li
+                                            v-else
+                                            class="page-item"
+                                            :class="{ 'active': tasks.current_page === entry }"
+                                        >
+                                            <BLink
+                                                class="page-link cursor-pointer"
+                                                @click.prevent="goToPage(entry)"
+                                            >
+                                                <span v-if="loadingPage === entry" class="spinner-border spinner-border-sm" role="status"></span>
+                                                <span v-else>{{ entry }}</span>
+                                            </BLink>
+                                        </li>
+                                    </template>
+                                    <li
+                                        class="page-item"
+                                        :class="{ 'disabled': tasks.current_page === totalPages }"
+                                    >
+                                        <BLink
+                                            class="page-link cursor-pointer"
+                                            @click.prevent="goToPage(tasks.current_page + 1)"
+                                        >
+                                            <span v-if="loadingPage === tasks.current_page + 1" class="spinner-border spinner-border-sm" role="status"></span>
+                                            <span v-else><i class="mdi mdi-chevron-right"></i></span>
+                                        </BLink>
+                                    </li>
+                                </ul>
+                            </BCol>
                         </BRow>
                     </BTab>
                     <BTab class="fw-semibold pt-2">
@@ -1124,8 +1192,21 @@ const handleTableScroll = (e) => {
                             <span class="fs-13">Нажмите на вкладку «Канбан», чтобы загрузить доски</span>
                         </div>
                     </BTab>
-                    <BTab title="Блок-схемы" class="fw-semibold pt-2">
-                        <h5>в разработке</h5>
+                    <BTab class="fw-semibold pt-2">
+                        <template #title>
+                            <span @click="flowsLoaded = true">Блок-схемы</span>
+                        </template>
+                        <div v-if="flowsLoaded" class="flows-tab-wrapper">
+                            <FlowsTab
+                                :project-hash="project.hash"
+                                :project-statuses="projectStatuses"
+                                :project-members="projectMembers"
+                            />
+                        </div>
+                        <div v-else class="text-center py-5 text-muted">
+                            <i class="ri-node-tree fs-24 d-block mb-2 opacity-50"></i>
+                            <span class="fs-13">Нажмите на вкладку «Блок-схемы», чтобы загрузить</span>
+                        </div>
                         <!-- <BCard no-body>
                             <BCardBody>
                                 <h5 class="card-title">Последние действия</h5>
@@ -3082,67 +3163,6 @@ const handleTableScroll = (e) => {
                 </BTabs>
             </BCol>
         </BRow>
-         <BRow v-if="totalPages > 1" class="g-0 text-center text-sm-start align-items-center mb-3">
-                            <BCol sm="6">
-                                <div>
-                                    <p class="mb-sm-0">Показано с {{ tasks.from }} по {{ tasks.to }} из {{ tasks.total }} задач</p>
-                                </div>
-                            </BCol>
-                            <BCol sm="6">
-                                <ul class="pagination pagination-separated justify-content-center justify-content-sm-end mb-sm-0">
-                                    <!-- Кнопка «Назад» -->
-                                    <li
-                                        class="page-item"
-                                        :class="{ 'disabled': tasks.current_page === 1 }"
-                                    >
-                                        <BLink
-                                            class="page-link cursor-pointer"
-                                            @click.prevent="goToPage(tasks.current_page - 1)"
-                                        >
-                                            <span v-if="loadingPage === tasks.current_page - 1" class="spinner-border spinner-border-sm" role="status"></span>
-                                            <span v-else><i class="mdi mdi-chevron-left"></i></span>
-                                        </BLink>
-                                    </li>
-
-                                    <!-- Умные страницы с многоточиями -->
-                                    <template v-for="(entry, idx) in visiblePages" :key="'p-' + idx">
-                                        <li
-                                            v-if="entry === '...'"
-                                            class="page-item disabled"
-                                        >
-                                            <span class="page-link">…</span>
-                                        </li>
-                                        <li
-                                            v-else
-                                            class="page-item"
-                                            :class="{ 'active': tasks.current_page === entry }"
-                                        >
-                                            <BLink
-                                                class="page-link cursor-pointer"
-                                                @click.prevent="goToPage(entry)"
-                                            >
-                                                <span v-if="loadingPage === entry" class="spinner-border spinner-border-sm" role="status"></span>
-                                                <span v-else>{{ entry }}</span>
-                                            </BLink>
-                                        </li>
-                                    </template>
-
-                                    <!-- Кнопка «Вперёд» -->
-                                    <li
-                                        class="page-item"
-                                        :class="{ 'disabled': tasks.current_page === totalPages }"
-                                    >
-                                        <BLink
-                                            class="page-link cursor-pointer"
-                                            @click.prevent="goToPage(tasks.current_page + 1)"
-                                        >
-                                            <span v-if="loadingPage === tasks.current_page + 1" class="spinner-border spinner-border-sm" role="status"></span>
-                                            <span v-else><i class="mdi mdi-chevron-right"></i></span>
-                                        </BLink>
-                                    </li>
-                                </ul>
-                            </BCol>
-                        </BRow>
 
     </Layout>
 </template>
@@ -3162,6 +3182,12 @@ const handleTableScroll = (e) => {
 }
 
 .kanban-tab-wrapper {
+    height: calc(100vh - 250px);
+    min-height: 500px;
+    overflow: hidden;
+}
+
+.flows-tab-wrapper {
     height: calc(100vh - 250px);
     min-height: 500px;
     overflow: hidden;
@@ -3212,17 +3238,6 @@ const handleTableScroll = (e) => {
     border-radius: 50%;
     display: inline-block;
     flex-shrink: 0;
-}
-
-/* Плавное появление кнопок действий при наведении на строку */
-.row-actions-wrapper {
-    opacity: 0;
-    transform: translateX(5px);
-    transition: all 0.15s ease-in-out;
-}
-tr:hover .row-actions-wrapper {
-    opacity: 1;
-    transform: translateX(0);
 }
 
 /* Кастомный скроллбар */
@@ -3288,6 +3303,144 @@ tr:hover .row-actions-wrapper {
     width: 24px;
     height: 24px;
     object-fit: cover;
+}
+
+/* ================================================================
+   Исправления согласно correct_tasks.md
+   ================================================================ */
+
+/* 1. Убираем вертикальный скролл в .table-responsive */
+.table-responsive {
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    max-height: none !important;
+}
+
+/* 5. Единый стиль статуса и приоритета */
+.badge-outline-custom {
+    border: 1px solid;
+    border-radius: 6px;
+    padding: 3px 10px;
+    display: inline-flex;
+    align-items: center;
+    font-size: 12px;
+    font-weight: 500;
+    background-color: transparent;
+}
+
+.status-badge {
+    gap: 6px;
+}
+
+.status-circle-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+    margin-right: 8px;
+}
+
+.priority-high {
+    border-color: rgba(245, 101, 101, 0.4) !important;
+    color: #f56565 !important;
+    background-color: rgba(245, 101, 101, 0.06) !important;
+}
+
+.priority-medium {
+    border-color: rgba(237, 137, 54, 0.4) !important;
+    color: #ed8936 !important;
+    background-color: rgba(237, 137, 54, 0.06) !important;
+}
+
+.priority-low {
+    border-color: rgba(41, 156, 219, 0.4) !important;
+    color: #299cdb !important;
+    background-color: rgba(41, 156, 219, 0.06) !important;
+}
+
+/* 4. Стили шапки проекта */
+.max-w-project-desc {
+    max-width: 680px;
+    line-height: 1.5;
+    word-break: break-word;
+}
+
+.project-icon-box {
+    width: 52px;
+    height: 52px;
+    min-width: 52px;
+}
+
+.project-icon-box img {
+    object-fit: cover;
+}
+
+.project-icon-box span {
+    line-height: 1;
+}
+
+.tracking-wider {
+    letter-spacing: 0.05em;
+}
+
+.border-start-dash {
+    border-left: 1px dashed #e9ebec;
+}
+
+@media (max-width: 767.98px) {
+    .project-meta-block {
+        border-left: none !important;
+        padding-left: 0 !important;
+        width: 100%;
+        justify-content: space-between;
+        background-color: #f8f9fa;
+        padding: 12px;
+        border-radius: 8px;
+    }
+
+    .meta-item-box {
+        text-align: left !important;
+    }
+
+    .border-start-dash {
+        border-left: none !important;
+        padding-left: 0 !important;
+    }
+}
+
+/* 6. Стили кнопок действий */
+.no-decor-btn {
+    text-decoration: none !important;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.no-decor-btn:hover {
+    background-color: #f8f9fa;
+}
+
+.btn-group .btn-link.text-danger:hover {
+    background-color: #fef4f2;
+}
+
+.btn-icon.btn-soft-success:active, .btn-icon.btn-soft-danger:active {
+    transform: scale(0.92);
+}
+
+.actions-container {
+    min-height: 32px;
+}
+
+/* 8. Защита от пустых строк таблицы */
+tr:empty {
+    display: none !important;
+}
+
+.table > tbody > tr > td {
+    padding: 0.75rem 0.6rem;
 }
 </style>
 
