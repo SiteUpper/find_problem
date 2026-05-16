@@ -226,4 +226,26 @@ const saveFlowData = () => {
 .tracking-wider {
   letter-spacing: 0.03em;
 }
+
+/* Принудительно возвращаем видимость иконкам управления (конфликт с глобальными стилями Velzon) */
+:deep(.vue-flow__controls-button) {
+  background-color: #ffffff !important;
+  border-bottom: 1px solid #e9ebec !important;
+  color: #495057 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+:deep(.vue-flow__controls-button:hover) {
+  background-color: #f3f6f9 !important;
+  color: #405189 !important;
+}
+
+:deep(.vue-flow__controls-button svg) {
+  width: 14px !important;
+  height: 14px !important;
+  display: block !important;
+  fill: currentColor !important;
+}
 </style>
