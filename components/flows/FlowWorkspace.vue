@@ -35,36 +35,50 @@
         </VueFlow>
       </div>
 
-      <!-- Боковая No-code панель доступных блоков робота -->
-      <div v-if="flowType === 'automation'" class="border-start bg-light p-3" style="width: 240px;">
-        <h6 class="fw-semibold text-uppercase fs-11 text-muted tracking-wider mb-3">Элементы робота</h6>
+      <!-- Боковая No-code панель доступных блоков робота (с иконками перетаскивания и подсказкой) -->
+      <div v-if="flowType === 'automation'" class="border-start bg-light p-3" style="width: 260px;">
+        <h6 class="fw-semibold text-uppercase fs-11 text-muted tracking-wider mb-2">Элементы робота</h6>
 
-        <div class="d-flex flex-column gap-2">
-          <!-- Блок 1: Триггер (Событие) -->
-          <div class="draggable-block bg-white p-2.5 border border-warning border-opacity-50 rounded-3 shadow-sm cursor-move d-flex align-items-center gap-2 fs-13 text-dark fw-medium"
+        <!-- Текстовая подсказка-инструкция -->
+        <p class="fs-12 text-muted mb-3 fst-italic lh-sm">
+          <i class="ri-information-line me-1 text-primary"></i> Зажмите и перетащите нужный элемент на доску слева:
+        </p>
+
+        <div class="d-flex flex-column gap-2.5">
+          <!-- Блок 1: Триггер -->
+          <div class="draggable-block bg-white p-2.5 border border-warning border-opacity-50 rounded-3 shadow-sm cursor-grab d-flex align-items-center justify-content-between text-dark fw-medium fs-13"
                draggable="true" @dragstart="onDragStart($event, 'custom-trigger')">
-            <div class="icon-shape bg-soft-warning text-warning rounded-2 d-flex align-items-center justify-content-center p-1">
-              <i class="ri-flashlight-fill fs-16"></i>
+            <div class="d-flex align-items-center gap-2">
+              <div class="icon-shape bg-soft-warning text-warning rounded-2 d-flex align-items-center justify-content-center p-1">
+                <i class="ri-flashlight-fill fs-16"></i>
+              </div>
+              <span>1. Событие (Триггер)</span>
             </div>
-            <span>1. Событие (Триггер)</span>
+            <i class="ri-drag-move-2-fill text-muted fs-15 opacity-50"></i>
           </div>
 
-          <!-- Блок 2: Условие (Фильтр) -->
-          <div class="draggable-block bg-white p-2.5 border border-primary border-opacity-50 rounded-3 shadow-sm cursor-move d-flex align-items-center gap-2 fs-13 text-dark fw-medium"
+          <!-- Блок 2: Условие -->
+          <div class="draggable-block bg-white p-2.5 border border-primary border-opacity-50 rounded-3 shadow-sm cursor-grab d-flex align-items-center justify-content-between text-dark fw-medium fs-13"
                draggable="true" @dragstart="onDragStart($event, 'custom-condition')">
-            <div class="icon-shape bg-soft-primary text-primary rounded-2 d-flex align-items-center justify-content-center p-1">
-              <i class="ri-git-merge-fill fs-16"></i>
+            <div class="d-flex align-items-center gap-2">
+              <div class="icon-shape bg-soft-primary text-primary rounded-2 d-flex align-items-center justify-content-center p-1">
+                <i class="ri-git-merge-fill fs-16"></i>
+              </div>
+              <span>2. Если Условие</span>
             </div>
-            <span>2. Если Условие</span>
+            <i class="ri-drag-move-2-fill text-muted fs-15 opacity-50"></i>
           </div>
 
-          <!-- Блок 3: Действие (Экшен) -->
-          <div class="draggable-block bg-white p-2.5 border border-success border-opacity-50 rounded-3 shadow-sm cursor-move d-flex align-items-center gap-2 fs-13 text-dark fw-medium"
+          <!-- Блок 3: Действие -->
+          <div class="draggable-block bg-white p-2.5 border border-success border-opacity-50 rounded-3 shadow-sm cursor-grab d-flex align-items-center justify-content-between text-dark fw-medium fs-13"
                draggable="true" @dragstart="onDragStart($event, 'custom-action')">
-            <div class="icon-shape bg-soft-success text-success rounded-2 d-flex align-items-center justify-content-center p-1">
-              <i class="ri-settings-5-fill fs-16"></i>
+            <div class="d-flex align-items-center gap-2">
+              <div class="icon-shape bg-soft-success text-success rounded-2 d-flex align-items-center justify-content-center p-1">
+                <i class="ri-settings-5-fill fs-16"></i>
+              </div>
+              <span>3. Действие робота</span>
             </div>
-            <span>3. Действие робота</span>
+            <i class="ri-drag-move-2-fill text-muted fs-15 opacity-50"></i>
           </div>
         </div>
       </div>
@@ -122,17 +136,21 @@ const onDrop = (event) => {
     id: `node_${Date.now()}`,
     type,
     position,
-    label: 'Новый элемент',
+    label: 'Элемент автоматизации',
     data: {
-      statuses: props.projectStatuses,
-      members: props.projectMembers,
-      field: 'priority',
+      statuses: JSON.parse(JSON.stringify(props.projectStatuses || [])),
+      members: JSON.parse(JSON.stringify(props.projectMembers || [])),
+      field: 'status_id',
       operator: '=',
       value: '',
+      status_id: props.projectStatuses?.[0]?.id || null,
+      type: 'create_subtask',
     },
   };
 
-  nodes.value.push(newNode);
+  // Иммутабельное обновление: новая ссылка на массив вместо .push(),
+  // чтобы Vue Flow не замораживал Drag-and-Drop через глубокий Proxy
+  nodes.value = [...nodes.value, newNode];
 };
 
 // Обработчик создания связи (стрелочки) между узлами
@@ -146,11 +164,8 @@ const onConnect = (connection) => {
     style.stroke = '#ef4444';
   }
 
-  edges.value.push({
-    ...connection,
-    style,
-    animated: true,
-  });
+  // Иммутабельное обновление вместо .push(), чтобы не нарушать реактивность Vue Flow
+  edges.value = [...edges.value, { ...connection, style, animated: true }];
 };
 
 // Экспорт холста в PDF
