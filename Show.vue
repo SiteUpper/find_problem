@@ -43,6 +43,7 @@ console.log(props.project_roles)
 // BTabs v-model работает с числовым индексом (0-based)
 // Порядок вкладок: 0=Задачи, 1=Канбан, 2=Блок-схемы, 3=Активность, 4=Бэклог, 5=Настройки, 6=Документы, 7=Гант, 8=Участники
 const tabIndexKanban = 1;
+const tabIndexFlows = 2;
 const tabIndexBacklog = 4;
 
 const activeTab = ref(0);
@@ -90,6 +91,13 @@ watch(activeTab, (newIdx) => {
     }
 
     window.history.replaceState({}, '', url.toString());
+});
+
+// Надёжный триггер загрузки вкладок при переключении activeTab
+watch(activeTab, (newIdx) => {
+  if (newIdx === tabIndexKanban) kanbanLoaded.value = true;
+  if (newIdx === tabIndexFlows) flowsLoaded.value = true;
+  if (newIdx === tabIndexBacklog) backlogLoaded.value = true;
 });
 
 // Watch for kanban/backlog loaded to set URL when clicked directly

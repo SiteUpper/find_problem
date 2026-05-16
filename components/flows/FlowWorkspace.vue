@@ -107,7 +107,7 @@
 </template>
 
 <script setup>
-import { ref, markRaw } from 'vue';
+import { markRaw } from 'vue';
 import { VueFlow, useVueFlow } from '@vue-flow/core';
 import { Background } from '@vue-flow/background';
 import { Controls } from '@vue-flow/controls';
@@ -128,7 +128,19 @@ const props = defineProps({
 
 const emit = defineEmits(['back', 'saved']);
 
-const { project, screenToFlowPosition } = useVueFlow({ id: 'flow-canvas' });
+// Деструктурируем nodes, edges и экшены из дефолтного инстанса Vue Flow.
+// Без id — хук автоматически связывается с единственным <VueFlow> в шаблоне.
+// v-model:nodes / v-model:edges обеспечивают двустороннюю синхронизацию.
+const {
+  nodes,
+  edges,
+  addNodes,
+  removeNodes,
+  screenToFlowPosition,
+} = useVueFlow({
+  nodes: props.initialData?.nodes || [],
+  edges: props.initialData?.edges || [],
+});
 
 // Регистрируем кастомный узел
 const nodeTypes = {
@@ -136,9 +148,6 @@ const nodeTypes = {
   'custom-condition': markRaw(CustomNode),
   'custom-action': markRaw(CustomNode),
 };
-
-const nodes = ref(props.initialData?.nodes || []);
-const edges = ref(props.initialData?.edges || []);
 
 // Логика Drag-and-Drop элементов на холст
 const onDragStart = (event, nodeType) => {
@@ -150,8 +159,8 @@ const onDrop = (event) => {
   const type = event.dataTransfer.getData('application/vueflow');
   if (!type) return;
 
-  // screenToFlowPosition корректно учитывает зум и сдвиг холста,
-  // в отличие от project(), который может сбиваться при повторных переносах
+  // screenToFlowPosition через единый инстанс корректно учитывает
+  // зум, сдвиг холста и глобальные координаты мыши
   const position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
 
   const newNode = {
@@ -170,14 +179,15 @@ const onDrop = (event) => {
     },
   };
 
-  // Иммутабельное обновление: новая ссылка на массив вместо .push(),
-  // чтобы Vue Flow не замораживал Drag-and-Drop через глубокий Proxy
-  nodes.value = [...nodes.value, newNode];
+  // Встроенный метод Vue Flow: атомарно добавляет узел без конфликта реактивности
+  addNodes([newNode]);
 };
 
 // Удаление узла с доски и всех связанных с ним рёбер
 const deleteNode = (nodeId) => {
-  nodes.value = nodes.value.filter(n => n.id !== nodeId);
+  // Встроенный метод Vue Flow удаляет узел и его рёбра атомарно
+  removeNodes([nodeId]);
+  // Дополнительно чистим рёбра вручную на случай, если removeNodes не затронул все
   edges.value = edges.value.filter(e => e.source !== nodeId && e.target !== nodeId);
 };
 
@@ -192,7 +202,7 @@ const onConnect = (connection) => {
     style.stroke = '#ef4444';
   }
 
-  // Иммутабельное обновление вместо .push(), чтобы не нарушать реактивность Vue Flow
+  // Иммутабельное обновление через addEdges (встроенный метод Vue Flow)
   edges.value = [...edges.value, { ...connection, style, animated: true }];
 };
 
